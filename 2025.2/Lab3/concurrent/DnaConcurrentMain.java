@@ -3,12 +3,16 @@ import java.io.IOException;
 import java.io.BufferedReader;
 import java.io.FileReader;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
 public class DnaConcurrentMain {
 
     public static void main(String[] args) {
         if (args.length < 2) {
-            System.err.println("Uso: java DnaSerialMain DIRETORIO_ARQUIVOS PADRAO");
-            System.err.println("Exemplo: java DnaSerialMain dna_inputs CGTAA");
+            System.err.println("Uso: java DnaConcurrentMain DIRETORIO_ARQUIVOS PADRAO");
             System.exit(1);
         }
 
@@ -16,31 +20,66 @@ public class DnaConcurrentMain {
         String pattern = args[1];
 
         File dir = new File(dirName);
-        if (!dir.isDirectory()) {
-            System.err.println("Caminho não é um diretório: " + dirName);
-            System.exit(2);
-        }
-
         File[] files = dir.listFiles((d, name) -> name.endsWith(".txt"));
-        if (files == null || files.length == 0) {
-            System.err.println("Nenhum arquivo .txt encontrado em: " + dirName);
-            System.exit(3);
+
+        List<Worker> workers = new ArrayList<>();
+        List<Thread> threads = new ArrayList<>();
+
+        // 🔹 cria uma thread por arquivo
+        for (File f : files) {
+            Worker w = new Worker(f, pattern);
+            Thread t = new Thread(w);
+
+            workers.add(w);
+            threads.add(t);
+
+            t.start();
         }
 
-        try {
-            long total = 0;
-            
-	    for (File f : files) {
-                total += countInFile(f, pattern);
+        // 🔹 espera todas terminarem
+        for (Thread t : threads) {
+            try {
+                t.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
+        }
 
-	    System.out.println("Sequência " + pattern + " foi encontrada " + total + " vezes.");
+        // 🔹 soma resultados (sem concorrência aqui)
+        long total = 0;
+        for (Worker w : workers) {
+            total += w.getResult();
+        }
+
+        System.out.println("Sequência " + pattern + " foi encontrada " + total + " vezes.");
+    }
+
+
+}
+
+class Worker implements Runnable {
+
+    private File file;
+    private String pattern;
+    private long result;
+
+    public Worker(File file, String pattern) {
+        this.file = file;
+        this.pattern = pattern;
+    }
+
+    @Override
+    public void run() {
+        try {
+            result = countInFile(file, pattern);
         } catch (IOException e) {
-            System.err.println("Erro ao ler arquivos: " + e.getMessage());
-            System.exit(4);
+            result = 0;
         }
     }
 
+    public long getResult() {
+        return result;
+    }
 
     public static long countInFile(File file, String pattern) throws IOException {
         long total = 0;
@@ -73,5 +112,4 @@ public class DnaConcurrentMain {
         }
         return count;
     }
-
 }

@@ -15,13 +15,13 @@ public class DnaSerialMain {
         String dirName = args[0];
         String pattern = args[1];
 
-        File dir = new File(dirName);
+        File dir = new File(dirName);   // abre o diretório princial
         if (!dir.isDirectory()) {
             System.err.println("Caminho não é um diretório: " + dirName);
             System.exit(2);
         }
 
-        File[] files = dir.listFiles((d, name) -> name.endsWith(".txt"));
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".txt"));   // cria um array com todos os arquivos txt do diretório 
         if (files == null || files.length == 0) {
             System.err.println("Nenhum arquivo .txt encontrado em: " + dirName);
             System.exit(3);
@@ -31,7 +31,7 @@ public class DnaSerialMain {
             long total = 0;
             
 	    for (File f : files) {
-                total += countInFile(f, pattern);
+                total += countInFile(f, pattern);       // faz a contagem do padrão por cada arquivo
             }
 
 	    System.out.println("Sequência " + pattern + " foi encontrada " + total + " vezes.");
