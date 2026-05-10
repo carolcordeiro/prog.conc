@@ -29,7 +29,7 @@ public class ImageMeanFilter {
      * @param kernelSize Size of mean kernel
      * @throws IOException If there is an error reading/writing
      */
-    public static void applyMeanFilter(String inputPath, String outputPath, int kernelSize) throws IOException {
+    public static void applyMeanFilter(String inputPath, String outputPath, int kernelSize, int threadsNumber) throws IOException {
         // Load image
         BufferedImage originalImage = ImageIO.read(new File(inputPath));
         
@@ -43,35 +43,89 @@ public class ImageMeanFilter {
         // Image processing
         int width = originalImage.getWidth();
         int height = originalImage.getHeight();
-        // Process each pixel
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                // Calculate neighborhood average
-                int[] avgColor = calculateNeighborhoodAverage(originalImage, x, y, kernelSize);
-                
-                // Set filtered pixel
-                filteredImage.setRGB(x, y, 
-                    (avgColor[0] << 16) | 
-                    (avgColor[1] << 8)  | 
-                    avgColor[2]
-                );
+        
+        int linesPerThread = height / threadsNumber;
+        java.lang.Thread[] threads = new java.lang.Thread[threadsNumber];
+
+        for (int i = 0; i < threadsNumber; i++) {
+            int startY = i * linesPerThread;
+            int endY = (i == threadsNumber - 1) ? height : startY + linesPerThread;
+            threads[i] = new java.lang.Thread(() -> {
+                for (int y = startY; y < endY; y++) {
+                    for (int x = 0; x < width; x++) {
+                        MeanFilterTask task = new MeanFilterTask(originalImage, x, y, kernelSize);
+                        task.run();
+                        int[] avgColor = task.getAverage();
+                        int rgb = (avgColor[0] << 16) | (avgColor[1] << 8) | avgColor[2];
+                        filteredImage.setRGB(x, y, rgb);
+                    }
+                }
+            });
+            threads[i].start();
+        }
+
+        for (java.lang.Thread thread : threads) {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
         
         // Save filtered image
         ImageIO.write(filteredImage, "jpg", new File(outputPath));
     }
-    
     /**
-     * Calculates average colors in a pixel's neighborhood
+     * Main method for demonstration
      * 
-     * @param image      Source image
-     * @param centerX    X coordinate of center pixel
-     * @param centerY    Y coordinate of center pixel
-     * @param kernelSize Kernel size
-     * @return Array with R, G, B averages
+     * Usage: java ImageMeanFilter <input_file>
+     * 
+     * Arguments:
+     *   input_file - Path to the input image file to be processed
+     *                Supported formats: JPG, PNG
+     * 
+     * Example:
+     *   java ImageMeanFilter input.jpg
+     * 
+     * The program will generate a filtered output image named "filtered_output.jpg"
+     * using a 7x7 mean filter kernel
      */
-    private static int[] calculateNeighborhoodAverage(BufferedImage image, int centerX, int centerY, int kernelSize) {
+    public static void main(String[] args) {
+        if (args.length < 2) {
+            System.err.println("Usage: java ImageMeanFilter <input_file> <threads_number>");
+            System.exit(1);
+        }
+
+        String inputFile = args[0];
+        int threadsNumber = Integer.parseInt(args[1]);
+        try {
+            applyMeanFilter(inputFile, "filtered_output.jpg", 7, threadsNumber);
+        } catch (IOException e) {
+            System.err.println("Error processing image: " + e.getMessage());
+        }
+    }
+
+}
+
+
+class MeanFilterTask implements Runnable {
+
+    private BufferedImage image;
+    private int centerX;
+    private int centerY;
+    private int kernelSize;
+    private int[] average;
+
+    public MeanFilterTask(BufferedImage image, int centerX, int centerY, int kernelSize) {
+        this.image = image;
+        this.centerX = centerX;
+        this.centerY = centerY;
+        this.kernelSize = kernelSize;
+        this.average = new int[3]; // To store average RGB values
+    }
+
+    @Override
+    public void run() {
         int width = image.getWidth();
         int height = image.getHeight();
         int pad = kernelSize / 2;
@@ -106,39 +160,14 @@ public class ImageMeanFilter {
         }
         
         // Calculate average
-        return new int[] {
+        average = new int[]{
             (int)(redSum / pixelCount),
             (int)(greenSum / pixelCount),
             (int)(blueSum / pixelCount)
         };
     }
-    
-    /**
-     * Main method for demonstration
-     * 
-     * Usage: java ImageMeanFilter <input_file>
-     * 
-     * Arguments:
-     *   input_file - Path to the input image file to be processed
-     *                Supported formats: JPG, PNG
-     * 
-     * Example:
-     *   java ImageMeanFilter input.jpg
-     * 
-     * The program will generate a filtered output image named "filtered_output.jpg"
-     * using a 7x7 mean filter kernel
-     */
-    public static void main(String[] args) {
-        if (args.length < 1) {
-            System.err.println("Usage: java ImageMeanFilter <input_file>");
-            System.exit(1);
-        }
 
-        String inputFile = args[0];
-        try {
-            applyMeanFilter(inputFile, "filtered_output.jpg", 7);
-        } catch (IOException e) {
-            System.err.println("Error processing image: " + e.getMessage());
-        }
+    public int[] getAverage() {
+        return average;
     }
 }
